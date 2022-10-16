@@ -2,66 +2,129 @@ import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
 
-type WorkspaceAlbum = {
+type WorkspaceAlbumType = WorkspaceValidAlbumType | WorkspaceGarbageAlbumType;
+
+type WorkspaceValidAlbumType = {
   // eslint-disable-next-line @typescript-eslint/naming-convention
   album_id: string;
-} & (
-  | {
-      type: "untracked" | "committed" | "dangling";
-      path: string;
+  type: "untracked" | "committed" | "dangling";
+  path: string;
+};
+
+type WorkspaceGarbageAlbumType = {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  album_id: string;
+  type: "garbage";
+};
+
+class WorkspaceAlbum extends vscode.TreeItem {
+  album: WorkspaceValidAlbumType;
+
+  constructor(album: WorkspaceValidAlbumType) {
+    switch (album.type) {
+      case "committed":
+        super(path.basename(album.path));
+        this.iconPath = vscode.ThemeIcon.File;
+        this.resourceUri = vscode.Uri.parse("_.flac");
+        this.tooltip = album.path;
+        break;
+      case "dangling":
+      case "untracked":
+        super(album.path);
+        this.iconPath = new vscode.ThemeIcon("files");
+        break;
+      default:
+        super("unreachable");
+        break;
     }
-  | { type: "garbage" }
-);
+    this.album = album;
+    this.contextValue = album.type;
+  }
+}
+
+class WorkspaceDirectory extends vscode.TreeItem {
+  path: string[];
+  constructor(path: string[]) {
+    super(path[path.length - 1], vscode.TreeItemCollapsibleState.Collapsed);
+    this.path = path;
+  }
+}
+
+type WorkspaceItem = WorkspaceAlbum | WorkspaceDirectory;
+
+type PathObject<T> = { [key: string]: T | PathObject<T> };
 
 export class WorkspaceProvider
-  implements vscode.TreeDataProvider<WorkspaceAlbum>
+  implements vscode.TreeDataProvider<WorkspaceItem>
 {
-  private albums: WorkspaceAlbum[];
+  private albums: PathObject<WorkspaceAlbum>;
 
   constructor(private workspaceRoot: string) {
     const result = cp.spawnSync("anni", ["status", "--json"], {
       cwd: workspaceRoot,
     });
     const json = result.stdout.toString();
-    this.albums = JSON.parse(json);
-    this.albums.forEach((album) => {
+    const albums: WorkspaceAlbumType[] = JSON.parse(json);
+    albums.forEach((album) => {
       if (album.type !== "garbage") {
-        album.path = "/" + path.relative(workspaceRoot, album.path);
+        album.path = path.relative(workspaceRoot, album.path);
       }
+    });
+
+    const validAlbums = albums.filter(
+      (a) => a.type !== "garbage"
+    ) as WorkspaceValidAlbumType[];
+    this.albums = {};
+    validAlbums.forEach((album) => {
+      const parts = album.path.split(path.sep);
+      let current = this.albums;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (typeof current[parts[i]] === "undefined") {
+          current[parts[i]] = {};
+        }
+        current = current[parts[i]] as PathObject<WorkspaceAlbum>;
+      }
+      current[parts[parts.length - 1]] = new WorkspaceAlbum(album);
     });
   }
 
-  getTreeItem(element: WorkspaceAlbum): vscode.TreeItem {
-    let item;
-    switch (element.type) {
-      case "committed":
-        item = new vscode.TreeItem(path.basename(element.path));
-        item.iconPath = vscode.ThemeIcon.File;
-        item.resourceUri = vscode.Uri.parse("_.flac");
-        item.tooltip = element.path;
-        break;
-      case "dangling":
-      case "untracked":
-        item = new vscode.TreeItem(element.path);
-        item.iconPath = new vscode.ThemeIcon("files");
-        break;
-      case "garbage":
-        item = new vscode.TreeItem(element.album_id.substring(0, 8));
-        item.iconPath = new vscode.ThemeIcon("bug");
-        break;
-    }
-    item.contextValue = element.type;
-    return item;
+  getTreeItem(element: WorkspaceItem): vscode.TreeItem {
+    return element;
   }
 
-  async getChildren(element?: WorkspaceAlbum): Promise<WorkspaceAlbum[]> {
+  async getChildren(element?: WorkspaceItem): Promise<WorkspaceItem[]> {
     if (!this.workspaceRoot) {
       vscode.window.showInformationMessage("No workspace open");
       return [];
     }
 
     if (typeof element === "undefined") {
-      return this.albums;
+      return Object.entries(this.albums)
+        .map(([key, album]) => {
+          if (album instanceof WorkspaceAlbum) {
+            return album;
+          } else {
+            return new WorkspaceDirectory([key]);
+          }
+        })
+        .sort(sortWorkspaceItem);
+    } else {
+      if (element instanceof WorkspaceDirectory) {
+        let current = this.albums;
+        for (const part of element.path) {
+          current = current[part] as PathObject<WorkspaceAlbum>;
+        }
+
+        return Object.entries(current)
+          .map(([key, album]) => {
+            if (album instanceof WorkspaceAlbum) {
+              return album;
+            } else {
+              return new WorkspaceDirectory([...element.path, key]);
+            }
+          })
+          .sort(sortWorkspaceItem);
+      }
     }
 
     return [];
@@ -95,5 +158,15 @@ export class WorkspaceProvider
       )
     );
     return disposable;
+  }
+}
+
+function sortWorkspaceItem(a: WorkspaceItem, b: WorkspaceItem) {
+  if (a instanceof WorkspaceDirectory && b instanceof WorkspaceAlbum) {
+    return -1;
+  } else if (a instanceof WorkspaceAlbum && b instanceof WorkspaceDirectory) {
+    return 1;
+  } else {
+    return a.label! < b.label! ? -1 : 1;
   }
 }
