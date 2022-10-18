@@ -27,6 +27,17 @@ class WorkspaceAlbum extends vscode.TreeItem {
         this.iconPath = vscode.ThemeIcon.File;
         this.resourceUri = vscode.Uri.parse("_.flac");
         this.tooltip = album.path;
+        this.command = {
+          title: "Play",
+          command: "vscode.open",
+          arguments: [
+            vscode.Uri.parse("anni://" + album.album_id)
+              // notice: /root/ prefix must exist here, or vscode will never load some albums
+              .with({ "path": `/root/${album.path}.toml` }),
+            { preview: true },
+            path.basename(album.path),
+          ],
+        };
         break;
       case "dangling":
       case "untracked":
@@ -47,6 +58,7 @@ class WorkspaceDirectory extends vscode.TreeItem {
   constructor(path: string[]) {
     super(path[path.length - 1], vscode.TreeItemCollapsibleState.Collapsed);
     this.path = path;
+    this.contextValue = "directory";
   }
 }
 
@@ -124,6 +136,9 @@ export class WorkspaceProvider
             }
           })
           .sort(sortWorkspaceItem);
+      } else {
+        // album insights
+        const path = element.album.path;
       }
     }
 
