@@ -33,7 +33,8 @@ class WorkspaceAlbum extends vscode.TreeItem {
           arguments: [
             vscode.Uri.parse("anni://" + album.album_id)
               // notice: /root/ prefix must exist here, or vscode will never load some albums
-              .with({ "path": `/root/${album.path}.toml` }),
+              // .with({ path: "/test.toml" }),
+              .with({ path: `/root/${album.path}.toml` }),
             { preview: true },
             path.basename(album.path),
           ],

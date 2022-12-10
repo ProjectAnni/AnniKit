@@ -16,6 +16,10 @@
   "contributes": {
     "commands": [
       {
+        "command": "anni.workspace.create",
+        "title": "Create Album"
+      },
+      {
         "command": "anni.workspaceView.commit",
         "title": "Commit",
         "icon": "$(check)"
@@ -37,6 +41,13 @@
       ]
     },
     "menus": {
+      "explorer/context": [
+        {
+          "command": "anni.workspace.create",
+          "when": "is-in-anni-workspace && explorerResourceIsFolder",
+          "group": "inline"
+        }
+      ],
       "view/item/context": [
         {
           "command": "anni.workspaceView.commit",
@@ -49,7 +60,18 @@
           "group": "inline"
         }
       ]
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "anni.albumScratch",
+        "displayName": "Album Scratch",
+        "selector": [
+          {
+            "filenamePattern": "anni:/*"
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "pnpm run compile",
