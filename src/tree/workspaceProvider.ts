@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
 
+interface IDisposable {
+  dispose(): void;
+}
+
 type WorkspaceAlbumType = WorkspaceValidAlbumType | WorkspaceGarbageAlbumType;
 
 type WorkspaceValidAlbumType = {
@@ -72,8 +76,10 @@ export class WorkspaceProvider
 {
   private albums: PathObject<WorkspaceAlbum>;
 
+  disposables: IDisposable[] = [];
+
   constructor(private workspaceRoot: string) {
-    const result = cp.spawnSync("anni", ["status", "--json"], {
+    const result = cp.spawnSync("anni", ["workspace", "status", "--json"], {
       cwd: workspaceRoot,
     });
     const json = result.stdout.toString();
@@ -99,6 +105,37 @@ export class WorkspaceProvider
       }
       current[parts[parts.length - 1]] = new WorkspaceAlbum(album);
     });
+
+
+    const scm = vscode.scm.createSourceControl("anni", "Anni", vscode.Uri.file(workspaceRoot));
+    this.disposables.push(scm);
+
+    const committedGroup = scm.createResourceGroup("committed", "Committed");
+    this.disposables.push(committedGroup);
+    committedGroup.hideWhenEmpty = true;
+    const committedAlbums = albums.filter(a => a.type === "committed") as WorkspaceValidAlbumType[];
+    committedGroup.resourceStates = committedAlbums.map((a) => ({
+      resourceUri: vscode.Uri.file(a.path),
+      command: {
+        title: 'Open metadata',
+        command: 'vscode.open',
+        arguments: [
+          vscode.Uri.parse("anni://" + a.album_id)
+            // notice: /root/ prefix must exist here, or vscode will never load some albums
+            // .with({ path: "/test.toml" }),
+            .with({ path: `/root/${a.path}.toml` }),
+          // { preview: false },
+          // path.basename(a.path),
+        ],
+      },
+      decorations: { tooltip: path.basename(a.path), iconPath: new vscode.ThemeIcon("music") }
+    }));
+
+    const untrackedGroup = scm.createResourceGroup("untracked", "Untracked");
+    this.disposables.push(untrackedGroup);
+    untrackedGroup.hideWhenEmpty = true;
+    const untrackedAlbums = albums.filter(a => a.type === "untracked") as WorkspaceValidAlbumType[];
+    untrackedGroup.resourceStates = untrackedAlbums.map((a) => ({ resourceUri: vscode.Uri.file(a.path) }));
   }
 
   getTreeItem(element: WorkspaceItem): vscode.TreeItem {

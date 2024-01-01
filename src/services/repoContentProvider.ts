@@ -3,6 +3,8 @@ import * as cp from "child_process";
 import * as path from "path";
 
 export class AnniRepoContentProvider implements vscode.TextDocumentContentProvider {
+    onDidChangeEvent = new vscode.EventEmitter<vscode.Uri>();
+
     constructor(private workspaceRoot: string) { }
 
     provideTextDocumentContent(uri: vscode.Uri): vscode.ProviderResult<string> {
@@ -14,5 +16,7 @@ export class AnniRepoContentProvider implements vscode.TextDocumentContentProvid
         return result.stdout.toString();
     }
 
-    onDidChange?: vscode.Event<vscode.Uri> | undefined;
+    get onDidChange(): vscode.Event<vscode.Uri> {
+        return this.onDidChangeEvent.event;
+    }
 }
