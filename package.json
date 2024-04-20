@@ -1,16 +1,20 @@
 {
   "name": "anni-kit",
   "displayName": "AnniKit",
+  "publisher": "project-anni",
   "description": "Project Anni toolkit for VSCode.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.84.0"
+    "vscode": "^1.88.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
     "workspaceContains:.anni/config.toml"
+  ],
+  "enabledApiProposals": [
+    "languageModels"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -82,7 +86,7 @@
     "test": "node ./out/test/runTest.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.84.0",
+    "@types/vscode": "^1.88.0",
     "@types/glob": "^8.0.0",
     "@types/mocha": "^10.0.0",
     "@types/node": "16.x",
