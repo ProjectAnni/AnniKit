@@ -11,7 +11,8 @@
     "Other"
   ],
   "activationEvents": [
-    "workspaceContains:.anni/config.toml"
+    "workspaceContains:.anni/config.toml",
+    "onFileSystem:anni"
   ],
   "enabledApiProposals": [
     "languageModels"
@@ -44,7 +45,19 @@
       "explorer": [
         {
           "id": "anni.workspaceView",
-          "name": "Workspace Explorer",
+          "name": "Anni Workspace",
+          "contextualTitle": "Project Anni",
+          "when": "is-in-anni-workspace"
+        },
+        {
+          "id": "anni.workspaceRepoAlbumView",
+          "name": "Anni Repository",
+          "contextualTitle": "Project Anni",
+          "when": "is-in-anni-workspace"
+        },
+        {
+          "id": "anni.workspaceRepoTagView",
+          "name": "Anni Tags",
           "contextualTitle": "Project Anni",
           "when": "is-in-anni-workspace"
         }

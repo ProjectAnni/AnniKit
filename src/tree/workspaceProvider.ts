@@ -36,10 +36,10 @@ class WorkspaceAlbum extends vscode.TreeItem {
           title: "Play",
           command: "vscode.open",
           arguments: [
-            vscode.Uri.parse("anni://" + album.album_id)
-              // notice: /root/ prefix must exist here, or vscode will never load some albums
+            vscode.Uri.parse("anni://album")
+              // notice: /any/ prefix must exist here, or vscode will never load some albums
               // .with({ path: "/test.toml" }),
-              .with({ path: `/root/${album.path}.toml` }),
+              .with({ path: `/any/${album.album_id}.toml` }),
             { preview: true },
             path.basename(album.path),
           ],
@@ -237,10 +237,10 @@ export class WorkspaceProvider
         title: "Open metadata",
         command: "vscode.open",
         arguments: [
-          vscode.Uri.parse("anni://" + a.album_id)
-            // notice: /root/ prefix must exist here, or vscode will never load some albums
+          vscode.Uri.parse("anni://album")
+            // notice: /any/ prefix must exist here, or vscode will never load some albums
             // .with({ path: "/test.toml" }),
-            .with({ path: `/root/${a.path}.toml` }),
+            .with({ path: `/any/${a.album_id}.toml` }),
           // { preview: false },
           // path.basename(a.path),
         ],
