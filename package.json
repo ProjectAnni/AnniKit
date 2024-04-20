@@ -32,6 +32,12 @@
         "command": "anni.workspaceView.delete",
         "title": "Delete",
         "icon": "$(trash)"
+      },
+      {
+        "command": "anni.workspace.refresh",
+        "title": "Refresh",
+        "category": "Anni",
+        "icon": "$(refresh)"
       }
     ],
     "views": {
@@ -45,11 +51,18 @@
       ]
     },
     "menus": {
+      "scm/title": [
+        {
+          "command": "anni.workspace.refresh",
+          "group": "navigation",
+          "when": "scmProvider == anni"
+        }
+      ],
       "explorer/context": [
         {
           "command": "anni.workspace.create",
           "when": "is-in-anni-workspace && explorerResourceIsFolder",
-          "group": "inline"
+          "group": "navigation"
         }
       ],
       "view/item/context": [

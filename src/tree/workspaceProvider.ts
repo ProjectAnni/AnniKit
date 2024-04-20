@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
+import { DisposableStore } from "../utils/disposableStore";
 
 interface IDisposable {
   dispose(): void;
@@ -72,70 +73,48 @@ type WorkspaceItem = WorkspaceAlbum | WorkspaceDirectory;
 type PathObject<T> = { [key: string]: T | PathObject<T> };
 
 export class WorkspaceProvider
+  extends DisposableStore
   implements vscode.TreeDataProvider<WorkspaceItem>
 {
-  private albums: PathObject<WorkspaceAlbum>;
+  private albumTree: PathObject<WorkspaceAlbum> = {};
+  private albumList: WorkspaceAlbumType[] = [];
 
-  disposables: IDisposable[] = [];
+  private scm: vscode.SourceControl;
+  private scmCommittedGroup: vscode.SourceControlResourceGroup;
+  private scmUntrackedGroup: vscode.SourceControlResourceGroup;
+
+  private _onDidChangeTreeData = new vscode.EventEmitter<
+    WorkspaceItem[] | null
+  >();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(private workspaceRoot: string) {
-    const result = cp.spawnSync("anni", ["workspace", "status", "--json"], {
-      cwd: workspaceRoot,
+    super();
+
+    this.scm = this.register(
+      vscode.scm.createSourceControl(
+        "anni",
+        "Anni",
+        vscode.Uri.file(workspaceRoot)
+      )
+    );
+
+    this.scmCommittedGroup = this.register(
+      this.scm.createResourceGroup("committed", "Committed")
+    );
+    this.scmCommittedGroup.hideWhenEmpty = true;
+
+    this.scmUntrackedGroup = this.register(
+      this.scm.createResourceGroup("untracked", "Untracked")
+    );
+    this.scmUntrackedGroup.hideWhenEmpty = true;
+
+    this.reloadAlbums();
+    this.refreshScmState();
+    vscode.commands.registerCommand("anni.workspace.refresh", () => {
+      this.reloadAlbums();
+      this.refreshScmState();
     });
-    const json = result.stdout.toString();
-    const albums: WorkspaceAlbumType[] = JSON.parse(json);
-    albums.forEach((album) => {
-      if (album.type !== "garbage") {
-        album.path = path.relative(workspaceRoot, album.path);
-      }
-    });
-
-    const validAlbums = albums.filter(
-      (a) => a.type !== "garbage"
-    ) as WorkspaceValidAlbumType[];
-    this.albums = {};
-    validAlbums.forEach((album) => {
-      const parts = album.path.split(path.sep);
-      let current = this.albums;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (typeof current[parts[i]] === "undefined") {
-          current[parts[i]] = {};
-        }
-        current = current[parts[i]] as PathObject<WorkspaceAlbum>;
-      }
-      current[parts[parts.length - 1]] = new WorkspaceAlbum(album);
-    });
-
-
-    const scm = vscode.scm.createSourceControl("anni", "Anni", vscode.Uri.file(workspaceRoot));
-    this.disposables.push(scm);
-
-    const committedGroup = scm.createResourceGroup("committed", "Committed");
-    this.disposables.push(committedGroup);
-    committedGroup.hideWhenEmpty = true;
-    const committedAlbums = albums.filter(a => a.type === "committed") as WorkspaceValidAlbumType[];
-    committedGroup.resourceStates = committedAlbums.map((a) => ({
-      resourceUri: vscode.Uri.file(a.path),
-      command: {
-        title: 'Open metadata',
-        command: 'vscode.open',
-        arguments: [
-          vscode.Uri.parse("anni://" + a.album_id)
-            // notice: /root/ prefix must exist here, or vscode will never load some albums
-            // .with({ path: "/test.toml" }),
-            .with({ path: `/root/${a.path}.toml` }),
-          // { preview: false },
-          // path.basename(a.path),
-        ],
-      },
-      decorations: { tooltip: path.basename(a.path), iconPath: new vscode.ThemeIcon("music") }
-    }));
-
-    const untrackedGroup = scm.createResourceGroup("untracked", "Untracked");
-    this.disposables.push(untrackedGroup);
-    untrackedGroup.hideWhenEmpty = true;
-    const untrackedAlbums = albums.filter(a => a.type === "untracked") as WorkspaceValidAlbumType[];
-    untrackedGroup.resourceStates = untrackedAlbums.map((a) => ({ resourceUri: vscode.Uri.file(a.path) }));
   }
 
   getTreeItem(element: WorkspaceItem): vscode.TreeItem {
@@ -149,7 +128,7 @@ export class WorkspaceProvider
     }
 
     if (typeof element === "undefined") {
-      return Object.entries(this.albums)
+      return Object.entries(this.albumTree)
         .map(([key, album]) => {
           if (album instanceof WorkspaceAlbum) {
             return album;
@@ -160,7 +139,7 @@ export class WorkspaceProvider
         .sort(sortWorkspaceItem);
     } else {
       if (element instanceof WorkspaceDirectory) {
-        let current = this.albums;
+        let current = this.albumTree;
         for (const part of element.path) {
           current = current[part] as PathObject<WorkspaceAlbum>;
         }
@@ -211,6 +190,74 @@ export class WorkspaceProvider
       )
     );
     return disposable;
+  }
+
+  private reloadAlbums() {
+    const result = cp.spawnSync("anni", ["workspace", "status", "--json"], {
+      cwd: this.workspaceRoot,
+    });
+    const json = result.stdout.toString();
+    const albums: WorkspaceAlbumType[] = JSON.parse(json);
+    albums.forEach((album) => {
+      if (album.type !== "garbage") {
+        album.path = path.relative(this.workspaceRoot, album.path);
+      }
+    });
+    this.albumList = albums;
+
+    const validAlbums = albums.filter(
+      (a) => a.type !== "garbage"
+    ) as WorkspaceValidAlbumType[];
+
+    this.albumTree = {};
+    validAlbums.forEach((album) => {
+      const parts = album.path.split(path.sep);
+      let current = this.albumTree;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (typeof current[parts[i]] === "undefined") {
+          current[parts[i]] = {};
+        }
+        current = current[parts[i]] as PathObject<WorkspaceAlbum>;
+      }
+      current[parts[parts.length - 1]] = new WorkspaceAlbum(album);
+    });
+
+    // update the full tree
+    this._onDidChangeTreeData.fire(null);
+  }
+
+  private refreshScmState() {
+    // update committed albums
+    const committedAlbums = this.albumList.filter(
+      (a) => a.type === "committed"
+    ) as WorkspaceValidAlbumType[];
+    this.scmCommittedGroup.resourceStates = committedAlbums.map((a) => ({
+      resourceUri: vscode.Uri.file(a.path),
+      command: {
+        title: "Open metadata",
+        command: "vscode.open",
+        arguments: [
+          vscode.Uri.parse("anni://" + a.album_id)
+            // notice: /root/ prefix must exist here, or vscode will never load some albums
+            // .with({ path: "/test.toml" }),
+            .with({ path: `/root/${a.path}.toml` }),
+          // { preview: false },
+          // path.basename(a.path),
+        ],
+      },
+      decorations: {
+        tooltip: path.basename(a.path),
+        iconPath: new vscode.ThemeIcon("music"),
+      },
+    }));
+
+    // update untracked albums
+    const untrackedAlbums = this.albumList.filter(
+      (a) => a.type === "untracked"
+    ) as WorkspaceValidAlbumType[];
+    this.scmUntrackedGroup.resourceStates = untrackedAlbums.map((a) => ({
+      resourceUri: vscode.Uri.file(a.path),
+    }));
   }
 }
 
